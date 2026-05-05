@@ -1,5 +1,6 @@
 import ITwilio from "./rest/Twilio";
 import * as webhooks from "./webhooks/webhooks";
+import * as webhooksAsync from "./webhooks/webhooks.async";
 import IRequestClient from "./base/RequestClient";
 import type { ClientOpts as IClientOpts } from "./base/BaseTwilio";
 import IRestException from "./base/RestException";
@@ -89,6 +90,26 @@ namespace TwilioSDK {
   export const getExpectedTwilioSignature = webhooks.getExpectedTwilioSignature;
   export type webhook = typeof webhooks.webhook;
   export const webhook = webhooks.webhook;
+  // Async webhook validation (Web Crypto - works on Node.js and edge runtimes)
+  export type validateBodyAsync = typeof webhooksAsync.validateBodyAsync;
+  export const validateBodyAsync = webhooksAsync.validateBodyAsync;
+  export type validateRequestAsync = typeof webhooksAsync.validateRequestAsync;
+  export const validateRequestAsync = webhooksAsync.validateRequestAsync;
+  export type validateRequestWithBodyAsync =
+    typeof webhooksAsync.validateRequestWithBodyAsync;
+  export const validateRequestWithBodyAsync =
+    webhooksAsync.validateRequestWithBodyAsync;
+  export type validateIncomingRequestAsync =
+    typeof webhooksAsync.validateIncomingRequestAsync;
+  export const validateIncomingRequestAsync =
+    webhooksAsync.validateIncomingRequestAsync;
+  export type getExpectedBodyHashAsync =
+    typeof webhooksAsync.getExpectedBodyHashAsync;
+  export const getExpectedBodyHashAsync = webhooksAsync.getExpectedBodyHashAsync;
+  export type getExpectedTwilioSignatureAsync =
+    typeof webhooksAsync.getExpectedTwilioSignatureAsync;
+  export const getExpectedTwilioSignatureAsync =
+    webhooksAsync.getExpectedTwilioSignatureAsync;
   // Export the client options type for convenience
   export type ClientOpts = IClientOpts;
 }

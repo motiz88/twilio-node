@@ -1,8 +1,6 @@
 const scmp = require("scmp");
 import crypto from "crypto";
-import urllib from "url";
 import { IncomingHttpHeaders } from "http2";
-import { parse, stringify } from "querystring";
 
 export interface Request {
   protocol: string;
@@ -105,13 +103,27 @@ function removePort(parsedUrl: URL): string {
   return parsedUrl.toString();
 }
 
+function legacyEncodeQuerystringValue(str: string): string {
+  // Encode like Node's querystring.stringify: uses encodeURIComponent semantics but
+  // does NOT encode characters that encodeURIComponent leaves alone: !, ', (, ), ~
+  return encodeURIComponent(str)
+    .replace(/%21/g, "!")
+    .replace(/%27/g, "'")
+    .replace(/%28/g, "(")
+    .replace(/%29/g, ")")
+    .replace(/%7E/g, "~");
+}
+
 function withLegacyQuerystring(url: string): string {
   const parsedUrl = new URL(url);
 
   if (parsedUrl.search) {
-    const qs = parse(parsedUrl.search.slice(1));
+    const params = new URLSearchParams(parsedUrl.search);
     parsedUrl.search = "";
-    return parsedUrl.toString() + "?" + stringify(qs);
+    const legacyQs = Array.from(params.entries())
+      .map(([k, v]) => `${legacyEncodeQuerystringValue(k)}=${legacyEncodeQuerystringValue(v)}`)
+      .join("&");
+    return parsedUrl.toString() + "?" + legacyQs;
   }
 
   return url;
@@ -318,14 +330,7 @@ export function validateIncomingRequest(
     var protocol = options.protocol || request.protocol;
     var host = options.host || request.headers.host;
 
-    webhookUrl = urllib.format({
-      protocol: protocol,
-      host: host,
-      pathname: request.originalUrl,
-    });
-    if (request.originalUrl.search(/\?/) >= 0) {
-      webhookUrl = webhookUrl.replace(/%3F/g, "?");
-    }
+    webhookUrl = `${protocol.replace(/:$/, "")}://${host}${request.originalUrl}`;
   }
 
   if (webhookUrl.indexOf("bodySHA256") > 0) {

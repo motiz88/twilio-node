@@ -69,6 +69,13 @@
     "index.d.ts"
   ],
   "main": "./lib",
+  "exports": {
+    ".": {
+      "edge-light": "./lib/index.edge.js",
+      "worker": "./lib/index.edge.js",
+      "default": "./lib/index.js"
+    }
+  },
   "types": "./index.d.ts",
   "engines": {
     "node": ">=20.0.0"
