@@ -317,6 +317,9 @@ export function validateIncomingRequest(
     var protocol = options.protocol || request.protocol;
     var host = options.host || request.headers.host;
 
+    // Strip trailing colon from protocol: frameworks like Express set
+    // request.protocol to "https" (no colon), but URL.protocol returns "https:"
+    // (with colon). Both forms are accepted here.
     webhookUrl = `${protocol.replace(/:$/, "")}://${host}${request.originalUrl}`;
   }
 

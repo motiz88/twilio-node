@@ -65,10 +65,12 @@ function withLegacyQuerystring(url: string): string {
   const parsedUrl = new URL(url);
 
   if (parsedUrl.search) {
-    // Use encodeURIComponent to re-encode query parameters. encodeURIComponent
-    // matches querystring.stringify encoding exactly for all URL-relevant
-    // characters (both leave !, ', (, ), ~, * unencoded and encode spaces as
-    // %20), making this a portable standard-API replacement.
+    // URLSearchParams decodes the query string (e.g. %27 → '), then
+    // encodeURIComponent re-encodes it. encodeURIComponent leaves the same
+    // set of characters unencoded as querystring.stringify (RFC 3986
+    // unreserved chars: A-Z a-z 0-9 - _ . ! ~ * ' ( )), so this faithfully
+    // reproduces the legacy querystring.stringify round-trip without importing
+    // any Node.js built-ins.
     const params = new URLSearchParams(parsedUrl.search);
     parsedUrl.search = "";
     const legacyQs = Array.from(params.entries())
@@ -286,11 +288,10 @@ export async function validateBodyAsync(
 ): Promise<boolean> {
   const expectedHash = await getExpectedBodyHashAsync(body);
 
-  // Timing-safe comparison of two hex strings.
-  // We use an HMAC-based approach to avoid leaking timing information:
-  // an attacker who controls the bodySHA256 URL parameter could craft requests
-  // with varying values and measure response timing to infer bytes of the
-  // expected hash. crypto.subtle.verify performs a constant-time comparison.
+  // Timing-safe comparison of two hex strings via HMAC-verify.
+  // A fixed key would let an attacker with multiple requests pre-compute
+  // expected HMACs; a fresh random key per call prevents that while still
+  // ensuring crypto.subtle.verify's constant-time guarantee.
   const encoder = new TextEncoder();
   const keyMaterial = globalThis.crypto.getRandomValues(new Uint8Array(32));
   const key = await globalThis.crypto.subtle.importKey(
