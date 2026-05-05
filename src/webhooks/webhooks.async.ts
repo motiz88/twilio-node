@@ -61,29 +61,18 @@ function removePort(parsedUrl: URL): string {
   return parsedUrl.toString();
 }
 
-function legacyEncodeQuerystringValue(str: string): string {
-  // Encode like Node's querystring.stringify: use encodeURIComponent but then
-  // revert encoding of characters that querystring.stringify leaves unencoded:
-  // !, ', (, ), ~ (unlike URLSearchParams which keeps them percent-encoded).
-  return encodeURIComponent(str)
-    .replace(/%21/g, "!")
-    .replace(/%27/g, "'")
-    .replace(/%28/g, "(")
-    .replace(/%29/g, ")")
-    .replace(/%7E/g, "~");
-}
-
 function withLegacyQuerystring(url: string): string {
   const parsedUrl = new URL(url);
 
   if (parsedUrl.search) {
+    // Use encodeURIComponent to re-encode query parameters. encodeURIComponent
+    // matches querystring.stringify encoding exactly for all URL-relevant
+    // characters (both leave !, ', (, ), ~, * unencoded and encode spaces as
+    // %20), making this a portable standard-API replacement.
     const params = new URLSearchParams(parsedUrl.search);
     parsedUrl.search = "";
     const legacyQs = Array.from(params.entries())
-      .map(
-        ([k, v]) =>
-          `${legacyEncodeQuerystringValue(k)}=${legacyEncodeQuerystringValue(v)}`
-      )
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join("&");
     return parsedUrl.toString() + "?" + legacyQs;
   }

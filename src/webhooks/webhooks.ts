@@ -1,5 +1,6 @@
 const scmp = require("scmp");
 import crypto from "crypto";
+import { parse, stringify } from "querystring";
 import { IncomingHttpHeaders } from "http2";
 
 export interface Request {
@@ -103,28 +104,13 @@ function removePort(parsedUrl: URL): string {
   return parsedUrl.toString();
 }
 
-function legacyEncodeQuerystringValue(str: string): string {
-  // Encode like Node's querystring.stringify: use encodeURIComponent but then
-  // revert encoding of characters that querystring.stringify leaves unencoded:
-  // !, ', (, ), ~ (unlike URLSearchParams which keeps them percent-encoded).
-  return encodeURIComponent(str)
-    .replace(/%21/g, "!")
-    .replace(/%27/g, "'")
-    .replace(/%28/g, "(")
-    .replace(/%29/g, ")")
-    .replace(/%7E/g, "~");
-}
-
 function withLegacyQuerystring(url: string): string {
   const parsedUrl = new URL(url);
 
   if (parsedUrl.search) {
-    const params = new URLSearchParams(parsedUrl.search);
+    const qs = parse(parsedUrl.search.slice(1));
     parsedUrl.search = "";
-    const legacyQs = Array.from(params.entries())
-      .map(([k, v]) => `${legacyEncodeQuerystringValue(k)}=${legacyEncodeQuerystringValue(v)}`)
-      .join("&");
-    return parsedUrl.toString() + "?" + legacyQs;
+    return parsedUrl.toString() + "?" + stringify(qs);
   }
 
   return url;
