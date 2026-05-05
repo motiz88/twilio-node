@@ -104,8 +104,9 @@ function removePort(parsedUrl: URL): string {
 }
 
 function legacyEncodeQuerystringValue(str: string): string {
-  // Encode like Node's querystring.stringify: uses encodeURIComponent semantics but
-  // does NOT encode characters that encodeURIComponent leaves alone: !, ', (, ), ~
+  // Encode like Node's querystring.stringify: use encodeURIComponent but then
+  // revert encoding of characters that querystring.stringify leaves unencoded:
+  // !, ', (, ), ~ (unlike URLSearchParams which keeps them percent-encoded).
   return encodeURIComponent(str)
     .replace(/%21/g, "!")
     .replace(/%27/g, "'")

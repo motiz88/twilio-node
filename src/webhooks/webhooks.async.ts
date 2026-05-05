@@ -62,8 +62,9 @@ function removePort(parsedUrl: URL): string {
 }
 
 function legacyEncodeQuerystringValue(str: string): string {
-  // Encode like Node's querystring.stringify: uses encodeURIComponent semantics but
-  // does NOT encode characters that encodeURIComponent leaves alone: !, ', (, ), ~
+  // Encode like Node's querystring.stringify: use encodeURIComponent but then
+  // revert encoding of characters that querystring.stringify leaves unencoded:
+  // !, ', (, ), ~ (unlike URLSearchParams which keeps them percent-encoded).
   return encodeURIComponent(str)
     .replace(/%21/g, "!")
     .replace(/%27/g, "'")
@@ -297,8 +298,10 @@ export async function validateBodyAsync(
   const expectedHash = await getExpectedBodyHashAsync(body);
 
   // Timing-safe comparison of two hex strings.
-  // We sign both strings with a fresh random HMAC key, then use verify
-  // (which is constant-time) to check equality.
+  // We use an HMAC-based approach to avoid leaking timing information:
+  // an attacker who controls the bodySHA256 URL parameter could craft requests
+  // with varying values and measure response timing to infer bytes of the
+  // expected hash. crypto.subtle.verify performs a constant-time comparison.
   const encoder = new TextEncoder();
   const keyMaterial = globalThis.crypto.getRandomValues(new Uint8Array(32));
   const key = await globalThis.crypto.subtle.importKey(
