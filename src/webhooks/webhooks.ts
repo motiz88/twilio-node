@@ -1,13 +1,25 @@
-const scmp = require("scmp");
-import crypto from "crypto";
-import urllib from "url";
-import { IncomingHttpHeaders } from "http2";
-import { parse, stringify } from "querystring";
+/**
+ * Shared utilities and async webhook validation for Twilio.
+ *
+ * This file has no dependency on Node.js built-ins and is safe to import
+ * from both the Node.js entry point (webhooks.node.ts) and the edge entry
+ * point (webhooks.edge.ts).  All URL helpers use the WHATWG URL API and
+ * encodeURIComponent, which are available in every supported runtime.
+ *
+ * The async validation functions use only globalThis.crypto.subtle, which is
+ * available in Node.js 15+ and all WinterCG-compliant edge runtimes.
+ */
 
 export interface Request {
   protocol: string;
   header(name: string): string | undefined;
-  headers: IncomingHttpHeaders;
+  /**
+   * The `host` header value is the only property accessed by the validation
+   * helpers.  The index signature accepts the full range of HTTP header values
+   * (string, string[], or undefined) so that both Express's IncomingHttpHeaders
+   * and plain objects are assignable here.
+   */
+  headers: { host?: string; [key: string]: string | string[] | undefined };
   originalUrl: string;
   rawBody?: any;
   body: any;
@@ -28,44 +40,14 @@ export interface RequestValidatorOptions {
   protocol?: string;
 }
 
-export interface WebhookOptions {
-  /**
-   * Whether or not the middleware should validate the request
-   * came from Twilio.  Default true. If the request does not originate from
-   * Twilio, we will return a text body and a 403.  If there is no configured
-   * auth token and validate=true, this is an error condition, so we will return
-   * a 500.
-   */
-  validate?: boolean;
-  /**
-   * Add helpers to the response object to improve support for XML (TwiML) rendering.  Default true.
-   */
-  includeHelpers?: boolean;
-  /**
-   * The full URL (with query string) you used to configure the webhook with Twilio - overrides host/protocol options
-   */
-  url?: string;
-  /**
-   * Manually specify the host name used by Twilio in a number's webhook config
-   */
-  host?: string;
-  /**
-   * Manually specify the protocol used by Twilio in a number's webhook config
-   */
-  protocol?: string;
-  /**
-   * Authentication token
-   */
-  authToken?: string;
-}
-
 /**
- * Utility function to construct the URL string, since Node.js url library won't include standard port numbers
+ * Utility function to construct the URL string, since Node.js url library
+ * won't include standard port numbers.
  *
  * @param parsedUrl - The parsed url object that Twilio requested on your server
  * @returns URL with standard port number included
  */
-function buildUrlWithStandardPort(parsedUrl: URL): string {
+export function buildUrlWithStandardPort(parsedUrl: URL): string {
   let url = "";
   const port = parsedUrl.protocol === "https:" ? ":443" : ":80";
 
@@ -80,12 +62,12 @@ function buildUrlWithStandardPort(parsedUrl: URL): string {
 }
 
 /**
- Utility function to add a port number to a URL
-
- @param parsedUrl - The parsed url object that Twilio requested on your server
- @returns URL with port
+ * Utility function to add a port number to a URL.
+ *
+ * @param parsedUrl - The parsed url object that Twilio requested on your server
+ * @returns URL with port
  */
-function addPort(parsedUrl: URL): string {
+export function addPort(parsedUrl: URL): string {
   if (!parsedUrl.port) {
     return buildUrlWithStandardPort(parsedUrl);
   }
@@ -93,38 +75,53 @@ function addPort(parsedUrl: URL): string {
 }
 
 /**
- Utility function to remove a port number from a URL
-
- @param parsedUrl - The parsed url object that Twilio requested on your server
- @returns URL without port
+ * Utility function to remove a port number from a URL.
+ *
+ * @param parsedUrl - The parsed url object that Twilio requested on your server
+ * @returns URL without port
  */
-function removePort(parsedUrl: URL): string {
-  parsedUrl = new URL(parsedUrl); // prevent mutation of original URL object
-
-  parsedUrl.port = "";
-  return parsedUrl.toString();
+export function removePort(parsedUrl: URL): string {
+  const copy = new URL(parsedUrl.href); // prevent mutation of original URL object
+  copy.port = "";
+  return copy.toString();
 }
 
-function withLegacyQuerystring(url: string): string {
+/**
+ * Re-encode query-string parameters using encodeURIComponent so that the URL
+ * exactly matches what Node's legacy `querystring.stringify` would have
+ * produced.  `encodeURIComponent` leaves the same set of characters unencoded
+ * as `querystring.stringify` (the RFC 3986 unreserved set: A-Z a-z 0-9 - _ .
+ * ! ~ * ' ( )), so the two are interchangeable for every value that can appear
+ * in a Twilio webhook URL.
+ *
+ * `URLSearchParams` first fully decodes percent-encoded characters (e.g.
+ * %27 → '), then `encodeURIComponent` re-encodes them, faithfully reproducing
+ * the legacy round-trip without any Node.js built-in imports.
+ */
+export function withLegacyQuerystring(url: string): string {
   const parsedUrl = new URL(url);
 
   if (parsedUrl.search) {
-    const qs = parse(parsedUrl.search.slice(1));
+    const params = new URLSearchParams(parsedUrl.search);
     parsedUrl.search = "";
-    return parsedUrl.toString() + "?" + stringify(qs);
+    const legacyQs = Array.from(params.entries())
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join("&");
+    return parsedUrl.toString() + "?" + legacyQs;
   }
 
   return url;
 }
 
 /**
- Utility function to convert request parameter to a string format
-
- @param paramName - The request parameter name
- @param paramValue - The request parameter value
- @returns Formatted parameter string
+ * Utility function to convert a request parameter to string format for
+ * HMAC signing.
+ *
+ * @param paramName - The request parameter name
+ * @param paramValue - The request parameter value
+ * @returns Formatted parameter string
  */
-function toFormUrlEncodedParam(
+export function toFormUrlEncodedParam(
   paramName: string,
   paramValue: string | Array<string>
 ): string {
@@ -137,339 +134,292 @@ function toFormUrlEncodedParam(
   return paramName + paramValue;
 }
 
-/**
- Utility function to get the expected signature for a given request
+// ---------------------------------------------------------------------------
+// Async (Web Crypto) webhook validation
+//
+// These functions use only globalThis.crypto.subtle, which is available in
+// Node.js 15+ and all WinterCG-compliant edge runtimes (Cloudflare Workers,
+// Vercel Edge, etc.).  They are in the shared file so they can be imported by
+// both webhooks.node.ts (via index.node.ts) and webhooks.edge.ts.
+// ---------------------------------------------------------------------------
 
- @param authToken - The auth token, as seen in the Twilio portal
- @param url - The full URL (with query string) you configured to handle
- this request
- @param params - the parameters sent with this request
- @returns signature
+/** Decode a base64 string to a Uint8Array (portable, no Buffer). */
+function base64ToBytes(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** Encode an ArrayBuffer as a lowercase hex string. */
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Async version of getExpectedTwilioSignature using Web Crypto.
+ *
+ * @param authToken - The auth token, as seen in the Twilio portal
+ * @param url - The full URL (with query string) you configured to handle this request
+ * @param params - the parameters sent with this request
+ * @returns Promise resolving to the expected base64-encoded HMAC-SHA1 signature
  */
-export function getExpectedTwilioSignature(
+export async function getExpectedTwilioSignatureAsync(
   authToken: string,
   url: string,
   params: Record<string, any>
-): string {
+): Promise<string> {
   if (url.indexOf("bodySHA256") !== -1 && params === null) {
     params = {};
   }
 
-  var data = Object.keys(params)
+  const data = Object.keys(params)
     .sort()
     .reduce((acc, key) => acc + toFormUrlEncodedParam(key, params[key]), url);
 
-  return crypto
-    .createHmac("sha1", authToken)
-    .update(Buffer.from(data, "utf-8"))
-    .digest("base64");
+  const encoder = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const signature = await globalThis.crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(data)
+  );
+
+  // Convert ArrayBuffer to base64
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
 }
 
 /**
- Utility function to get the expected body hash for a given request's body
-
- @param body - The plain-text body of the request
+ * Async version of getExpectedBodyHash using Web Crypto.
+ *
+ * @param body - The plain-text body of the request
+ * @returns Promise resolving to the hex-encoded SHA-256 hash of the body
  */
-export function getExpectedBodyHash(body: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(Buffer.from(body, "utf-8"))
-    .digest("hex");
+export async function getExpectedBodyHashAsync(body: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const hashBuffer = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    encoder.encode(body)
+  );
+  return arrayBufferToHex(hashBuffer);
 }
 
 /**
- Utility function to validate an incoming request is indeed from Twilio
-
- @param authToken - The auth token, as seen in the Twilio portal
- @param twilioHeader - The value of the X-Twilio-Signature header from the request
- @param url - The full URL (with query string) you configured to handle this request
- @param params - the parameters sent with this request
- @returns valid
+ * Async timing-safe signature validation for a single URL variant.
+ * Uses crypto.subtle.verify which is inherently constant-time, replacing scmp.
  */
-export function validateRequest(
+async function validateSignatureWithUrlAsync(
   authToken: string,
   twilioHeader: string,
   url: string,
   params: Record<string, any>
-): boolean {
+): Promise<boolean> {
+  const data = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => acc + toFormUrlEncodedParam(key, params[key]), url);
+
+  const encoder = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["verify"]
+  );
+
+  let signatureBytes: Uint8Array;
+  try {
+    signatureBytes = base64ToBytes(twilioHeader);
+  } catch {
+    return false;
+  }
+
+  return globalThis.crypto.subtle.verify(
+    "HMAC",
+    key,
+    signatureBytes,
+    encoder.encode(data)
+  );
+}
+
+/**
+ * Async version of validateRequest using Web Crypto.
+ *
+ * @param authToken - The auth token, as seen in the Twilio portal
+ * @param twilioHeader - The value of the X-Twilio-Signature header from the request
+ * @param url - The full URL (with query string) you configured to handle this request
+ * @param params - the parameters sent with this request
+ * @returns Promise resolving to true if the request is valid
+ */
+export async function validateRequestAsync(
+  authToken: string,
+  twilioHeader: string,
+  url: string,
+  params: Record<string, any>
+): Promise<boolean> {
   twilioHeader = twilioHeader || "";
   const urlObject = new URL(url);
 
   /*
-   *  Check signature of the url with and without the port number
-   *  and with and without the legacy querystring (special chars are encoded when using `new URL()`)
-   *  since signature generation on the back end is inconsistent
+   * Check signature of the url with and without the port number
+   * and with and without the legacy querystring (special chars are encoded when using `new URL()`)
+   * since signature generation on the back end is inconsistent
    */
-  const isValidSignatureWithoutPort = validateSignatureWithUrl(
-    authToken,
-    twilioHeader,
-    removePort(urlObject),
-    params
-  );
-
-  if (isValidSignatureWithoutPort) {
+  if (
+    await validateSignatureWithUrlAsync(
+      authToken,
+      twilioHeader,
+      removePort(urlObject),
+      params
+    )
+  ) {
     return true;
   }
 
-  const isValidSignatureWithPort = validateSignatureWithUrl(
-    authToken,
-    twilioHeader,
-    addPort(urlObject),
-    params
-  );
-
-  if (isValidSignatureWithPort) {
+  if (
+    await validateSignatureWithUrlAsync(
+      authToken,
+      twilioHeader,
+      addPort(urlObject),
+      params
+    )
+  ) {
     return true;
   }
 
-  const isValidSignatureWithLegacyQuerystringWithoutPort =
-    validateSignatureWithUrl(
+  if (
+    await validateSignatureWithUrlAsync(
       authToken,
       twilioHeader,
       withLegacyQuerystring(removePort(urlObject)),
       params
-    );
-
-  if (isValidSignatureWithLegacyQuerystringWithoutPort) {
+    )
+  ) {
     return true;
   }
 
-  const isValidSignatureWithLegacyQuerystringWithPort =
-    validateSignatureWithUrl(
-      authToken,
-      twilioHeader,
-      withLegacyQuerystring(addPort(urlObject)),
-      params
-    );
-
-  return isValidSignatureWithLegacyQuerystringWithPort;
-}
-
-function validateSignatureWithUrl(
-  authToken: string,
-  twilioHeader: string,
-  url: string,
-  params: Record<string, any>
-): boolean {
-  const signatureWithoutPort = getExpectedTwilioSignature(
+  return validateSignatureWithUrlAsync(
     authToken,
-    url,
+    twilioHeader,
+    withLegacyQuerystring(addPort(urlObject)),
     params
   );
-
-  return scmp(Buffer.from(twilioHeader), Buffer.from(signatureWithoutPort));
-}
-
-export function validateBody(
-  body: string,
-  bodyHash: any[] | string | Buffer
-): boolean {
-  var expectedHash = getExpectedBodyHash(body);
-  return scmp(Buffer.from(bodyHash), Buffer.from(expectedHash));
 }
 
 /**
- Utility function to validate an incoming request is indeed from Twilio. This also validates
- the request body against the bodySHA256 post parameter.
-
- @param authToken - The auth token, as seen in the Twilio portal
- @param twilioHeader - The value of the X-Twilio-Signature header from the request
- @param url - The full URL (with query string) you configured to handle this request
- @param body - The body of the request
- @returns valid
+ * Async version of validateBody using Web Crypto.
+ *
+ * Performs a timing-safe comparison of the given bodyHash against the
+ * SHA-256 hash of the body, using an HMAC-based constant-time technique.
+ *
+ * @param body - The plain-text body of the request
+ * @param bodyHash - The expected SHA-256 hex hash (e.g. from the bodySHA256 query parameter)
+ * @returns Promise resolving to true if the body matches the hash
  */
-export function validateRequestWithBody(
+export async function validateBodyAsync(
+  body: string,
+  bodyHash: string
+): Promise<boolean> {
+  const expectedHash = await getExpectedBodyHashAsync(body);
+
+  // Timing-safe comparison of two hex strings via HMAC-verify.
+  // A fixed key would let an attacker with multiple requests pre-compute
+  // expected HMACs; a fresh random key per call prevents that while still
+  // ensuring crypto.subtle.verify's constant-time guarantee.
+  const encoder = new TextEncoder();
+  const keyMaterial = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    keyMaterial,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+  const expectedSig = await globalThis.crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(expectedHash)
+  );
+  return globalThis.crypto.subtle.verify(
+    "HMAC",
+    key,
+    expectedSig,
+    encoder.encode(bodyHash)
+  );
+}
+
+/**
+ * Async version of validateRequestWithBody using Web Crypto.
+ *
+ * @param authToken - The auth token, as seen in the Twilio portal
+ * @param twilioHeader - The value of the X-Twilio-Signature header from the request
+ * @param url - The full URL (with query string) you configured to handle this request
+ * @param body - The body of the request
+ * @returns Promise resolving to true if the request and body are valid
+ */
+export async function validateRequestWithBodyAsync(
   authToken: string,
   twilioHeader: string,
   url: string,
   body: string
-): boolean {
+): Promise<boolean> {
   const urlObject = new URL(url);
   return (
-    validateRequest(authToken, twilioHeader, url, {}) &&
-    validateBody(body, urlObject.searchParams.get("bodySHA256") || "")
+    (await validateRequestAsync(authToken, twilioHeader, url, {})) &&
+    (await validateBodyAsync(
+      body,
+      urlObject.searchParams.get("bodySHA256") || ""
+    ))
   );
 }
 
 /**
- Utility function to validate an incoming request is indeed from Twilio.
- adapted from https://github.com/crabasa/twiliosig
-
- @param request - A request object (based on Express implementation http://expressjs.com/api.html#req.params)
- @param authToken - The auth token, as seen in the Twilio portal
- @param opts - options for request validation:
-    -> url: The full URL (with query string) you used to configure the webhook with Twilio - overrides host/protocol options
-    -> host: manually specify the host name used by Twilio in a number's webhook config
-    -> protocol: manually specify the protocol used by Twilio in a number's webhook config
+ * Async version of validateIncomingRequest using Web Crypto.
+ *
+ * @param request - A request object (based on Express implementation)
+ * @param authToken - The auth token, as seen in the Twilio portal
+ * @param opts - options for request validation
+ * @returns Promise resolving to true if the request is valid
  */
-export function validateIncomingRequest(
+export async function validateIncomingRequestAsync(
   request: Request,
   authToken: string,
   opts?: RequestValidatorOptions
-): boolean {
-  var options = opts || {};
-  var webhookUrl;
+): Promise<boolean> {
+  const options = opts || {};
+  let webhookUrl: string;
 
   if (options.url) {
-    // Let the user specify the full URL
     webhookUrl = options.url;
   } else {
-    // Use configured host/protocol, or infer based on request
-    var protocol = options.protocol || request.protocol;
-    var host = options.host || request.headers.host;
-
-    webhookUrl = urllib.format({
-      protocol: protocol,
-      host: host,
-      pathname: request.originalUrl,
-    });
-    if (request.originalUrl.search(/\?/) >= 0) {
-      webhookUrl = webhookUrl.replace(/%3F/g, "?");
-    }
+    const protocol = options.protocol || request.protocol;
+    const host = options.host || request.headers.host;
+    webhookUrl = `${protocol.replace(/:$/, "")}://${host}${request.originalUrl}`;
   }
 
   if (webhookUrl.indexOf("bodySHA256") > 0) {
-    return validateRequestWithBody(
+    return validateRequestWithBodyAsync(
       authToken,
       request.header("X-Twilio-Signature") || "",
       webhookUrl,
       request.rawBody || "{}"
     );
   } else {
-    return validateRequest(
+    return validateRequestAsync(
       authToken,
       request.header("X-Twilio-Signature") || "",
       webhookUrl,
       request.body || {}
     );
   }
-}
-
-export function validateExpressRequest(
-  request: Request,
-  authToken: string,
-  opts?: RequestValidatorOptions
-): boolean {
-  return validateIncomingRequest(request, authToken, opts);
-}
-
-/**
-Express middleware to accompany a Twilio webhook. Provides Twilio
-request validation, and makes the response a little more friendly for our
-TwiML generator.  Request validation requires the express.urlencoded middleware
-to have been applied (e.g. app.use(express.urlencoded()); in your app config).
-
-Options:
-- validate: {Boolean} whether or not the middleware should validate the request
-    came from Twilio.  Default true. If the request does not originate from
-    Twilio, we will return a text body and a 403.  If there is no configured
-    auth token and validate=true, this is an error condition, so we will return
-    a 500.
-- host: manually specify the host name used by Twilio in a number's webhook config
-- protocol: manually specify the protocol used by Twilio in a number's webhook config
-- url: The full URL (with query string) you used to configure the webhook with Twilio - overrides host/protocol options
-
-Returns a middleware function.
-
-Examples:
-var webhookMiddleware = twilio.webhook();
-var webhookMiddleware = twilio.webhook('asdha9dhjasd'); //init with auth token
-var webhookMiddleware = twilio.webhook({
-    validate:false // don't attempt request validation
-});
-var webhookMiddleware = twilio.webhook({
-    host: 'hook.twilio.com',
-    protocol: 'https'
-});
- */
-export function webhook(
-  opts?: string | WebhookOptions,
-  authToken?: string | WebhookOptions
-): (req: any, res: any, next: any) => void {
-  let token: string;
-  let options: WebhookOptions | undefined = undefined;
-
-  // Narrowing the args
-  if (opts) {
-    if (typeof opts === "string") {
-      token = opts;
-    }
-    if (typeof opts === "object") {
-      options = opts;
-    }
-  }
-  if (authToken) {
-    if (typeof authToken === "string") {
-      token = authToken;
-    }
-    if (typeof authToken === "object") {
-      options = authToken;
-    }
-  }
-
-  if (!options) options = {};
-  if (options.validate == undefined) options.validate = true;
-
-  // Process arguments
-  var tokenString;
-  for (var i = 0, l = arguments.length; i < l; i++) {
-    var arg = arguments[i];
-    if (typeof arg === "string") {
-      tokenString = arg;
-    } else {
-      options = Object.assign(options || {}, arg);
-    }
-  }
-
-  // set auth token from input or environment variable
-  if (options) {
-    options.authToken = tokenString
-      ? tokenString
-      : process.env.TWILIO_AUTH_TOKEN;
-  }
-  // Create middleware function
-  return function hook(request, response, next) {
-    // Do validation if requested
-    if (options?.validate) {
-      // Check if the 'X-Twilio-Signature' header exists or not
-      if (!request.header("X-Twilio-Signature")) {
-        return response
-          .type("text/plain")
-          .status(400)
-          .send(
-            "No signature header error - X-Twilio-Signature header does not exist, maybe this request is not coming from Twilio."
-          );
-      }
-      // Check for a valid auth token
-      if (!options?.authToken) {
-        console.error(
-          "[Twilio]: Error - Twilio auth token is required for webhook request validation."
-        );
-        response
-          .type("text/plain")
-          .status(500)
-          .send(
-            "Webhook Error - we attempted to validate this request without first configuring our auth token."
-          );
-      } else {
-        // Check that the request originated from Twilio
-        var valid = validateExpressRequest(request, options?.authToken, {
-          url: options?.url,
-          host: options?.host,
-          protocol: options?.protocol,
-        });
-
-        if (valid) {
-          next();
-        } else {
-          return response
-            .type("text/plain")
-            .status(403)
-            .send("Twilio Request Validation Failed.");
-        }
-      }
-    } else {
-      next();
-    }
-  };
 }

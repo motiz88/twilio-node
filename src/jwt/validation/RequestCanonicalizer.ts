@@ -101,6 +101,17 @@ class RequestCanonicalizer {
     return crypto.createHash("sha256").update(body).digest("hex");
   }
 
+  async sha256HexAsync(body: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const hashBuffer = await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      encoder.encode(body)
+    );
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
   getCanonicalizedRequestString(): string {
     return `${this.getCanonicalizedMethod()}
 ${this.getCanonicalizedPath()}
