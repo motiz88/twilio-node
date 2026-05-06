@@ -2,34 +2,18 @@ const scmp = require("scmp");
 import crypto from "crypto";
 import { IncomingHttpHeaders } from "http2";
 import {
+  Request as SharedRequest,
+  RequestValidatorOptions,
   addPort,
   removePort,
   toFormUrlEncodedParam,
   withLegacyQuerystring,
 } from "./webhooks.shared";
 
-export interface Request {
-  protocol: string;
-  header(name: string): string | undefined;
-  headers: IncomingHttpHeaders;
-  originalUrl: string;
-  rawBody?: any;
-  body: any;
-}
+export type { RequestValidatorOptions } from "./webhooks.shared";
 
-export interface RequestValidatorOptions {
-  /**
-   * The full URL (with query string) you used to configure the webhook with Twilio - overrides host/protocol options
-   */
-  url?: string;
-  /**
-   * Manually specify the host name used by Twilio in a number's webhook config
-   */
-  host?: string;
-  /**
-   * Manually specify the protocol used by Twilio in a number's webhook config
-   */
-  protocol?: string;
+export interface Request extends SharedRequest {
+  headers: IncomingHttpHeaders;
 }
 
 export interface WebhookOptions {
