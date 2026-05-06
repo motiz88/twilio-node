@@ -13,9 +13,9 @@ import {
   removePort,
   toFormUrlEncodedParam,
   withLegacyQuerystring,
-} from "./webhooks.shared";
+} from "./webhooks";
 
-export type { Request, RequestValidatorOptions } from "./webhooks.shared";
+export type { Request, RequestValidatorOptions } from "./webhooks";
 
 /** Decode a base64 string to a Uint8Array (portable, no Buffer). */
 function base64ToBytes(base64: string): Uint8Array {

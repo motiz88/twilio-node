@@ -1,17 +1,19 @@
+// Sync reference implementations — imported directly from the Node build so
+// that this spec works identically in both the node and edge test runs.
 import {
   getExpectedTwilioSignature,
   getExpectedBodyHash,
   validateRequest,
   validateBody,
   validateRequestWithBody,
-} from "../../../src";
+} from "../../../src/webhooks/webhooks.node";
 import {
   getExpectedTwilioSignatureAsync,
   getExpectedBodyHashAsync,
   validateRequestAsync,
   validateBodyAsync,
   validateRequestWithBodyAsync,
-} from "../../../src/webhooks/webhooks.async";
+} from "../../../src/webhooks/webhooks.edge";
 
 describe("webhooks async (Web Crypto)", () => {
   const authToken = "s3cr3t";
@@ -228,42 +230,52 @@ describe("webhooks async (Web Crypto)", () => {
   });
 
   describe("edge entry point (src/index.edge.ts)", () => {
-    it("exports functions under their Async names", async () => {
-      const edge = await import("../../../src/index.edge");
+    let edge;
+    beforeAll(async () => {
+      edge = await import("../../../src/index.edge");
+    });
 
-      // Functions must be exported under their *Async names
+    it("exports async webhook validation functions", () => {
       expect(typeof edge.getExpectedTwilioSignatureAsync).toBe("function");
       expect(typeof edge.validateRequestAsync).toBe("function");
       expect(typeof edge.validateBodyAsync).toBe("function");
       expect(typeof edge.validateRequestWithBodyAsync).toBe("function");
       expect(typeof edge.validateIncomingRequestAsync).toBe("function");
       expect(typeof edge.getExpectedBodyHashAsync).toBe("function");
+    });
 
-      // Sync-named aliases must NOT be present
+    it("does not export Node-only sync webhook functions", () => {
+      // Sync validation uses Node.js crypto/scmp and belongs only in
+      // index.node.ts; it must not appear in the edge entry point.
       expect(edge.validateRequest).toBeUndefined();
       expect(edge.validateBody).toBeUndefined();
       expect(edge.getExpectedTwilioSignature).toBeUndefined();
     });
 
     it("getExpectedTwilioSignatureAsync produces the correct signature", async () => {
-      const edge = await import("../../../src/index.edge");
-
       const url = "https://example.com/path?test=param";
       const params = { foo: "bar" };
       const expected = getExpectedTwilioSignature(authToken, url, params);
 
-      const result = await edge.getExpectedTwilioSignatureAsync(authToken, url, params);
+      const result = await edge.getExpectedTwilioSignatureAsync(
+        authToken,
+        url,
+        params
+      );
       expect(result).toBe(expected);
     });
 
     it("validateRequestAsync correctly validates a signed request", async () => {
-      const edge = await import("../../../src/index.edge");
-
       const url = "https://example.com/path?test=param";
       const params = { foo: "bar" };
       const signature = getExpectedTwilioSignature(authToken, url, params);
 
-      const result = await edge.validateRequestAsync(authToken, signature, url, params);
+      const result = await edge.validateRequestAsync(
+        authToken,
+        signature,
+        url,
+        params
+      );
       expect(result).toBe(true);
     });
   });

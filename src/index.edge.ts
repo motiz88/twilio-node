@@ -1,20 +1,13 @@
 /**
- * Edge runtime entry point for Twilio webhook validation.
+ * Edge runtime entry point for the Twilio SDK.
  *
- * This module exports only the async, Web Crypto-based webhook validation
- * functions. It has no dependency on Node.js built-ins and is suitable for
- * use in edge runtimes such as Cloudflare Workers and Vercel Edge Functions.
+ * Re-exports everything from the shared entry point (index.ts), which
+ * contains only Web Crypto / pure-JS code that is compatible with every
+ * WinterCG-compliant runtime (Cloudflare Workers, Vercel Edge, etc.).
+ *
+ * As more of the SDK is made edge-compatible, the new implementations will
+ * be added to index.ts (shared) and automatically appear here.  Node-only
+ * things (REST client, sync webhook validation, JWT, …) remain in
+ * index.node.ts and are never exported from this file.
  */
-export {
-  validateRequestAsync,
-  validateBodyAsync,
-  validateRequestWithBodyAsync,
-  validateIncomingRequestAsync,
-  getExpectedBodyHashAsync,
-  getExpectedTwilioSignatureAsync,
-} from "./webhooks/webhooks.async";
-
-export type {
-  Request,
-  RequestValidatorOptions,
-} from "./webhooks/webhooks.async";
+export * from "./index";

@@ -49,8 +49,9 @@
     "typedoc": "^0.28.11"
   },
   "scripts": {
-    "test": "npm run test:javascript && npm run test:typescript",
-    "test:javascript": "jest spec --coverage --detectOpenHandles --testPathIgnorePatterns=spec/cluster",
+    "test": "npm run test:javascript && npm run test:edge && npm run test:typescript",
+    "test:javascript": "jest spec --config jest.config.node.js --coverage --detectOpenHandles",
+    "test:edge": "jest spec --config jest.config.edge.js --detectOpenHandles",
     "test:typescript": "tsc --noEmit",
     "jshint": "jshint src/rest/** src/base/** src/http/**",
     "jscs": "eslint src/base/**/**.js src/http/**/**.js --fix",
@@ -68,12 +69,12 @@
     "index.js",
     "index.d.ts"
   ],
-  "main": "./lib",
+  "main": "./lib/index.node",
   "exports": {
     ".": {
       "edge-light": "./lib/index.edge.js",
       "worker": "./lib/index.edge.js",
-      "default": "./lib/index.js"
+      "default": "./lib/index.node.js"
     }
   },
   "types": "./index.d.ts",
