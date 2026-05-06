@@ -2,8 +2,8 @@
  * Shared utilities for Twilio webhook validation.
  *
  * This file has no dependency on Node.js built-ins and is safe to import
- * from both the Node.js entry point (webhooks.ts) and the edge/async entry
- * point (webhooks.async.ts).  All URL helpers use the WHATWG URL API and
+ * from both the Node.js entry point (webhooks.node.ts) and the edge entry
+ * point (webhooks.edge.ts).  All URL helpers use the WHATWG URL API and
  * encodeURIComponent, which are available in every supported runtime.
  */
 
