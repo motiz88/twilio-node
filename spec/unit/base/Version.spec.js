@@ -97,30 +97,24 @@ describe("streaming results", function () {
     });
   });
 
-  it("streams all results", function (done) {
+  it("streams all results", async function () {
     holodeck.mock(new Response(200, bodyOne));
     holodeck.mock(new Response(200, bodyTwo));
     holodeck.mock(new Response(200, bodyThree));
-    client.api.v2010
+    const messages = await client.api.v2010
       .accounts("ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-      .messages.list()
-      .then((messages) => {
-        expect(messages.length).toEqual(5);
-      });
-    done();
+      .messages.list();
+    expect(messages.length).toEqual(5);
   });
 
-  it("limits results", function (done) {
+  it("limits results", async function () {
     holodeck.mock(new Response(200, bodyOne));
     holodeck.mock(new Response(200, bodyTwo));
     holodeck.mock(new Response(200, bodyThree));
-    client.api.v2010
+    const messages = await client.api.v2010
       .accounts("ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-      .messages.list({ limit: 3 })
-      .then((messages) => {
-        expect(messages.length).toEqual(3);
-      });
-    done();
+      .messages.list({ limit: 3 });
+    expect(messages.length).toEqual(3);
   });
 });
 

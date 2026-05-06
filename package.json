@@ -45,13 +45,15 @@
     "node-mocks-http": "^1.8.1",
     "prettier": "^2.7.1",
     "ts-jest": "^29.1.1",
+    "typedoc": "^0.28.11",
     "typescript": "^5.9.2",
-    "typedoc": "^0.28.11"
+    "vitest": "^4.1.5"
   },
   "scripts": {
     "test": "npm run test:javascript && npm run test:typescript",
     "test:javascript": "jest spec --coverage --detectOpenHandles --testPathIgnorePatterns=spec/cluster",
     "test:typescript": "tsc --noEmit",
+    "test:vitest": "vitest run",
     "jshint": "jshint src/rest/** src/base/** src/http/**",
     "jscs": "eslint src/base/**/**.js src/http/**/**.js --fix",
     "prepublish": "npm run build",

@@ -9,12 +9,10 @@ describe("BasicAuthStrategy constructor", function () {
     expect(basicAuthStrategy.getAuthType()).toEqual("basic");
   });
 
-  it("Should return basic auth string", function (done) {
+  it("Should return basic auth string", async function () {
     const auth = Buffer.from(username + ":" + password).toString("base64");
-    basicAuthStrategy.getAuthString().then(function (authString) {
-      expect(authString).toEqual(`Basic ${auth}`);
-      done();
-    });
+    const authString = await basicAuthStrategy.getAuthString();
+    expect(authString).toEqual(`Basic ${auth}`);
   });
 
   it("Should return true for requiresAuthentication", function () {
