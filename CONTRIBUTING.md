@@ -151,6 +151,44 @@ you are working:
 * All features or bug fixes **must be tested** by one or more tests.
 * All classes and methods **must be documented**.
 
+## <a name="testing"></a> Running Tests
+
+### Jest (default)
+
+The primary test suite runs under [Jest](https://jestjs.io/) and covers all
+unit tests:
+
+```shell
+npm test
+```
+
+This runs `test:javascript` (Jest), `test:typescript` (TypeScript type-check),
+and linting.
+
+### Vitest
+
+The repository also includes a [Vitest](https://vitest.dev/) configuration as
+an alternative test runner. Vitest provides faster feedback loops and
+compatibility with modern ESM tooling.
+
+Run all specs under Vitest:
+
+```shell
+npm run test:vitest
+```
+
+Both runners cover the same `spec/` suite (excluding cluster/integration tests).
+CI runs both, so please ensure `npm run test:vitest` passes before submitting a
+pull request.
+
+#### Key differences from Jest
+
+- `done()` callbacks are not supported — use `async`/`await` or return a `Promise`.
+- `jest` global is shimmed to `vi` automatically; imports of `@jest/globals`
+  are aliased to Vitest equivalents.
+- Module factory return values must be explicit objects (see
+  [Vitest migration guide](https://vitest.dev/guide/migration.html#jest)).
+
 
 [issue-link]: https://github.com/twilio/twilio-node/issues/new
 [github]: https://github.com/twilio/twilio-node

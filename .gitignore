@@ -18,6 +18,7 @@ node_modules
 
 ### Spec and test coverage ###
 spec
+!spec/__vitest__/
 
 ### Test coverage ###
 coverage

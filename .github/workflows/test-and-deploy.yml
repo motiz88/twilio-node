@@ -38,6 +38,9 @@ jobs:
       - name: Run Unit Tests
         run: npm run ci
 
+      - name: Run Vitest
+        run: npm run test:vitest
+
       - name: Run Cluster Tests
         if: (!github.event.pull_request.head.repo.fork)
         env:
