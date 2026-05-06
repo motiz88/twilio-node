@@ -45,8 +45,8 @@
     "node-mocks-http": "^1.8.1",
     "prettier": "^2.7.1",
     "ts-jest": "^29.1.1",
-    "typedoc": "^0.28.11",
     "typescript": "^5.9.2",
+    "typedoc": "^0.28.11",
     "vitest": "^4.1.5"
   },
   "scripts": {

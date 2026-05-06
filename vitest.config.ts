@@ -10,9 +10,6 @@ export default defineConfig({
         "spec/__vitest__/jest-globals-shim.ts"
       ),
     },
-    // Ensure TypeScript source files are found when Vite resolves them
-    // without an explicit extension.
-    extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".jsx", ".json"],
   },
   test: {
     // Expose Jest-compatible globals (describe, it, expect, vi, …) without imports.
