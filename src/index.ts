@@ -18,12 +18,12 @@ export {
   validateIncomingRequestAsync,
   getExpectedBodyHashAsync,
   getExpectedTwilioSignatureAsync,
-} from "./webhooks/webhooks.edge";
+} from "./webhooks/webhooks";
 
 export type {
   Request,
   RequestValidatorOptions,
-} from "./webhooks/webhooks.edge";
+} from "./webhooks/webhooks";
 
 // TwiML response builders — pure JavaScript (xmlbuilder), no Node.js built-ins.
 export { default as VoiceResponse } from "./twiml/VoiceResponse";
