@@ -6,94 +6,16 @@
  * edge runtimes (Cloudflare Workers, Vercel Edge, etc.) as well as Node.js.
  */
 
-export interface Request {
-  protocol: string;
-  header(name: string): string | undefined;
-  headers: { host?: string; [key: string]: string | string[] | undefined };
-  originalUrl: string;
-  rawBody?: any;
-  body: any;
-}
+import {
+  Request,
+  RequestValidatorOptions,
+  addPort,
+  removePort,
+  toFormUrlEncodedParam,
+  withLegacyQuerystring,
+} from "./webhooks.shared";
 
-export interface RequestValidatorOptions {
-  /**
-   * The full URL (with query string) you used to configure the webhook with Twilio - overrides host/protocol options
-   */
-  url?: string;
-  /**
-   * Manually specify the host name used by Twilio in a number's webhook config
-   */
-  host?: string;
-  /**
-   * Manually specify the protocol used by Twilio in a number's webhook config
-   */
-  protocol?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers (portable, no Node.js dependencies)
-// ---------------------------------------------------------------------------
-
-function buildUrlWithStandardPort(parsedUrl: URL): string {
-  let url = "";
-  const port = parsedUrl.protocol === "https:" ? ":443" : ":80";
-
-  url += parsedUrl.protocol ? parsedUrl.protocol + "//" : "";
-  url += parsedUrl.username;
-  url += parsedUrl.password ? ":" + parsedUrl.password : "";
-  url += parsedUrl.username || parsedUrl.password ? "@" : "";
-  url += parsedUrl.host ? parsedUrl.host + port : "";
-  url += parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
-
-  return url;
-}
-
-function addPort(parsedUrl: URL): string {
-  if (!parsedUrl.port) {
-    return buildUrlWithStandardPort(parsedUrl);
-  }
-  return parsedUrl.toString();
-}
-
-function removePort(parsedUrl: URL): string {
-  parsedUrl = new URL(parsedUrl.toString()); // prevent mutation
-  parsedUrl.port = "";
-  return parsedUrl.toString();
-}
-
-function withLegacyQuerystring(url: string): string {
-  const parsedUrl = new URL(url);
-
-  if (parsedUrl.search) {
-    // URLSearchParams decodes the query string (e.g. %27 → '), then
-    // encodeURIComponent re-encodes it. encodeURIComponent leaves the same
-    // set of characters unencoded as querystring.stringify (RFC 3986
-    // unreserved chars: A-Z a-z 0-9 - _ . ! ~ * ' ( )), so this faithfully
-    // reproduces the legacy querystring.stringify round-trip without importing
-    // any Node.js built-ins.
-    const params = new URLSearchParams(parsedUrl.search);
-    parsedUrl.search = "";
-    const legacyQs = Array.from(params.entries())
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join("&");
-    return parsedUrl.toString() + "?" + legacyQs;
-  }
-
-  return url;
-}
-
-function toFormUrlEncodedParam(
-  paramName: string,
-  paramValue: string | Array<string>
-): string {
-  if (paramValue instanceof Array) {
-    return Array.from(new Set(paramValue))
-      .sort()
-      .map((val) => toFormUrlEncodedParam(paramName, val))
-      .reduce((acc, val) => acc + val, "");
-  }
-  return paramName + paramValue;
-}
+export type { Request, RequestValidatorOptions } from "./webhooks.shared";
 
 /** Decode a base64 string to a Uint8Array (portable, no Buffer). */
 function base64ToBytes(base64: string): Uint8Array {

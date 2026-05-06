@@ -1,7 +1,12 @@
 const scmp = require("scmp");
 import crypto from "crypto";
-import { parse, stringify } from "querystring";
 import { IncomingHttpHeaders } from "http2";
+import {
+  addPort,
+  removePort,
+  toFormUrlEncodedParam,
+  withLegacyQuerystring,
+} from "./webhooks.shared";
 
 export interface Request {
   protocol: string;
@@ -56,84 +61,6 @@ export interface WebhookOptions {
    * Authentication token
    */
   authToken?: string;
-}
-
-/**
- * Utility function to construct the URL string, since Node.js url library won't include standard port numbers
- *
- * @param parsedUrl - The parsed url object that Twilio requested on your server
- * @returns URL with standard port number included
- */
-function buildUrlWithStandardPort(parsedUrl: URL): string {
-  let url = "";
-  const port = parsedUrl.protocol === "https:" ? ":443" : ":80";
-
-  url += parsedUrl.protocol ? parsedUrl.protocol + "//" : "";
-  url += parsedUrl.username;
-  url += parsedUrl.password ? ":" + parsedUrl.password : "";
-  url += parsedUrl.username || parsedUrl.password ? "@" : "";
-  url += parsedUrl.host ? parsedUrl.host + port : "";
-  url += parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
-
-  return url;
-}
-
-/**
- Utility function to add a port number to a URL
-
- @param parsedUrl - The parsed url object that Twilio requested on your server
- @returns URL with port
- */
-function addPort(parsedUrl: URL): string {
-  if (!parsedUrl.port) {
-    return buildUrlWithStandardPort(parsedUrl);
-  }
-  return parsedUrl.toString();
-}
-
-/**
- Utility function to remove a port number from a URL
-
- @param parsedUrl - The parsed url object that Twilio requested on your server
- @returns URL without port
- */
-function removePort(parsedUrl: URL): string {
-  parsedUrl = new URL(parsedUrl); // prevent mutation of original URL object
-
-  parsedUrl.port = "";
-  return parsedUrl.toString();
-}
-
-function withLegacyQuerystring(url: string): string {
-  const parsedUrl = new URL(url);
-
-  if (parsedUrl.search) {
-    const qs = parse(parsedUrl.search.slice(1));
-    parsedUrl.search = "";
-    return parsedUrl.toString() + "?" + stringify(qs);
-  }
-
-  return url;
-}
-
-/**
- Utility function to convert request parameter to a string format
-
- @param paramName - The request parameter name
- @param paramValue - The request parameter value
- @returns Formatted parameter string
- */
-function toFormUrlEncodedParam(
-  paramName: string,
-  paramValue: string | Array<string>
-): string {
-  if (paramValue instanceof Array) {
-    return Array.from(new Set(paramValue))
-      .sort()
-      .map((val) => toFormUrlEncodedParam(paramName, val))
-      .reduce((acc, val) => acc + val, "");
-  }
-  return paramName + paramValue;
 }
 
 /**
