@@ -49,9 +49,9 @@
     "typedoc": "^0.28.11"
   },
   "scripts": {
-    "test": "npm run test:javascript && npm run test:edge && npm run test:typescript",
+    "test": "npm run test:javascript && npm run test:javascript-edge && npm run test:typescript",
     "test:javascript": "jest spec --config jest.config.node.js --coverage --detectOpenHandles",
-    "test:edge": "jest spec --config jest.config.edge.js --detectOpenHandles",
+    "test:javascript-edge": "jest spec --config jest.config.edge.js --detectOpenHandles",
     "test:typescript": "tsc --noEmit",
     "jshint": "jshint src/rest/** src/base/** src/http/**",
     "jscs": "eslint src/base/**/**.js src/http/**/**.js --fix",
